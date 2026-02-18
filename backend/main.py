@@ -42,11 +42,11 @@ AVAILABLE_MODELS = [
 
 # Маппинг брендовых названий на реальные модели
 MODEL_MAPPING = {
-    "Flickers AI 2.2 ULTRA CODING": "meta-llama/llama-3.1-8b-instruct",
-    "Flickers AI 2.0 ULTRA": "meta-llama/llama-3.1-8b-instruct",
-    "Flickers AI 2.5 PRO": "meta-llama/llama-3.1-8b-instruct",
-    "Flickers AI 2.5 FAST": "meta-llama/llama-3.2-3b-instruct",
-    "Flickers AI 2.0 FAST": "meta-llama/llama-3.2-1b-instruct",
+    "Flickers AI 2.2 ULTRA CODING": "qwen/qwen-2.5-coder-32b-instruct",  # Специально для кодинга
+    "Flickers AI 2.0 ULTRA": "anthropic/claude-3.5-sonnet",  # Самая мощная
+    "Flickers AI 2.5 PRO": "meta-llama/llama-3.1-70b-instruct",  # Мощная и быстрая
+    "Flickers AI 2.5 FAST": "meta-llama/llama-3.1-8b-instruct",  # Быстрая
+    "Flickers AI 2.0 FAST": "meta-llama/llama-3.2-3b-instruct",  # Самая быстрая
 }
 
 class Message(BaseModel):
