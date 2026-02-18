@@ -42,9 +42,9 @@ AVAILABLE_MODELS = [
 
 # Маппинг брендовых названий на реальные модели
 MODEL_MAPPING = {
-    "Flickers AI 2.2 ULTRA CODING": "meta-llama/llama-3.1-70b-instruct:free",
-    "Flickers AI 2.0 ULTRA": "meta-llama/llama-3.1-70b-instruct:free",
-    "Flickers AI 2.5 PRO": "google/gemini-flash-1.5:free",
+    "Flickers AI 2.2 ULTRA CODING": "microsoft/phi-3-medium-128k-instruct:free",
+    "Flickers AI 2.0 ULTRA": "microsoft/phi-3-medium-128k-instruct:free",
+    "Flickers AI 2.5 PRO": "meta-llama/llama-3.2-3b-instruct:free",
     "Flickers AI 2.5 FAST": "meta-llama/llama-3.2-3b-instruct:free",
     "Flickers AI 2.0 FAST": "meta-llama/llama-3.2-1b-instruct:free",
 }
