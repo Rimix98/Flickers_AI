@@ -27,11 +27,11 @@ app.add_middleware(
 CHATS_DIR = "chats"
 os.makedirs(CHATS_DIR, exist_ok=True)
 
-# Используем OpenRouter API
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-API_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Используем Hugging Face Inference API
+HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "")
+API_BASE_URL = "https://api-inference.huggingface.co/models/"
 
-# Доступные модели в России (работают через OpenRouter)
+# Доступные модели в России (работают через Hugging Face)
 # Отсортированы от самой мощной к самой слабой
 AVAILABLE_MODELS = [
     "Flickers AI 2.0 ULTRA",
@@ -40,13 +40,13 @@ AVAILABLE_MODELS = [
     "Flickers AI 2.0 FAST",
 ]
 
-# Маппинг брендовых названий на реальные модели
+# Маппинг брендовых названий на реальные модели Hugging Face
 MODEL_MAPPING = {
-    "Flickers AI 2.2 ULTRA CODING": "qwen/qwen-2.5-coder-32b-instruct",  # Специально для кодинга
-    "Flickers AI 2.0 ULTRA": "anthropic/claude-3.5-sonnet",  # Самая мощная
-    "Flickers AI 2.5 PRO": "meta-llama/llama-3.1-70b-instruct",  # Мощная и быстрая
-    "Flickers AI 2.5 FAST": "meta-llama/llama-3.1-8b-instruct",  # Быстрая
-    "Flickers AI 2.0 FAST": "meta-llama/llama-3.2-3b-instruct",  # Самая быстрая
+    "Flickers AI 2.2 ULTRA CODING": "Qwen/Qwen2.5-Coder-32B-Instruct",  # Специально для кодинга
+    "Flickers AI 2.0 ULTRA": "meta-llama/Llama-3.1-70B-Instruct",  # Самая мощная
+    "Flickers AI 2.5 PRO": "meta-llama/Llama-3.1-8B-Instruct",  # Быстрая и качественная
+    "Flickers AI 2.5 FAST": "meta-llama/Llama-3.2-3B-Instruct",  # Быстрая
+    "Flickers AI 2.0 FAST": "meta-llama/Llama-3.2-1B-Instruct",  # Самая быстрая
 }
 
 class Message(BaseModel):
@@ -1203,41 +1203,55 @@ class Calculator:
             async with httpx.AsyncClient() as client_http:
                 headers = {
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "http://localhost:3000",
-                    "X-Title": "Flickers AI",
                 }
                 
-                if OPENROUTER_API_KEY:
-                    headers["Authorization"] = f"Bearer {OPENROUTER_API_KEY}"
+                if HUGGINGFACE_API_KEY:
+                    headers["Authorization"] = f"Bearer {HUGGINGFACE_API_KEY}"
                 
-                # Базовые параметры без цензуры
+                # Формируем промпт для Hugging Face (не все модели поддерживают chat format)
+                # Объединяем сообщения в один промпт
+                prompt = ""
+                for msg in messages:
+                    if msg["role"] == "system":
+                        prompt += f"System: {msg['content']}\n\n"
+                    elif msg["role"] == "user":
+                        prompt += f"User: {msg['content']}\n\n"
+                    elif msg["role"] == "assistant":
+                        prompt += f"Assistant: {msg['content']}\n\n"
+                
+                prompt += "Assistant:"
+                
+                # Параметры для Hugging Face
                 payload = {
-                    "model": real_model,  # Используем реальную модель
-                    "messages": messages,
-                    "stream": True,
-                    "temperature": 0.7,
-                    "max_tokens": 2000,
-                    "top_p": 1.0,  # Полная свобода выбора токенов
-                    "frequency_penalty": 0.0,  # Без штрафов за повторения
-                    "presence_penalty": 0.0,  # Без штрафов за присутствие
-                    "transforms": [],  # Отключаем все трансформации
-                    "route": "fallback"  # Используем fallback без модерации
+                    "inputs": prompt,
+                    "parameters": {
+                        "max_new_tokens": 2000,
+                        "temperature": 0.3 if request.coding_mode else 0.7,
+                        "top_p": 0.95,
+                        "do_sample": True,
+                        "return_full_text": False,
+                    },
+                    "options": {
+                        "use_cache": False,
+                        "wait_for_model": True,
+                    }
                 }
-                
-                # Для режима кодинга - более точная температура
-                if request.coding_mode:
-                    payload["temperature"] = 0.3  # Более точные ответы для кода
                 
                 chat_id = request.chat_id or datetime.now().strftime("%Y%m%d_%H%M%S")
                 
-                print(f"🚀 Отправляем запрос к OpenRouter...")
-                async with client_http.stream(
-                    "POST",
-                    API_BASE_URL,
-                    json=payload,
-                    headers=headers,
-                    timeout=60.0
-                ) as response:
+                # URL для конкретной модели
+                model_url = f"{API_BASE_URL}{real_model}"
+                
+                print(f"🚀 Отправляем запрос к Hugging Face: {real_model}")
+                
+                try:
+                    response = await client_http.post(
+                        model_url,
+                        json=payload,
+                        headers=headers,
+                        timeout=120.0
+                    )
+                    
                     print(f"📡 Статус ответа: {response.status_code}")
                     
                     if response.status_code != 200:
@@ -1247,35 +1261,35 @@ class Calculator:
                         yield f"data: {json.dumps({'error': error_text})}\n\n"
                         return
                     
-                    chunk_count = 0
-                    async for line in response.aiter_lines():
-                        if line.startswith("data: "):
-                            data = line[6:]
-                            if data == "[DONE]":
-                                print(f"✅ Стрим завершен. Получено чанков: {chunk_count}")
-                                yield f"data: [DONE]\n\n"
-                                break
-                            
-                            try:
-                                chunk = json.loads(data)
-                                if "choices" in chunk and len(chunk["choices"]) > 0:
-                                    choice = chunk["choices"][0]
-                                    delta = choice.get("delta", {})
-                                    
-                                    # Проверяем reasoning (процесс мышления)
-                                    if "reasoning_content" in delta:
-                                        reasoning = delta["reasoning_content"]
-                                        if reasoning:
-                                            yield f"data: {json.dumps({'reasoning': reasoning, 'chat_id': chat_id})}\n\n"
-                                    
-                                    # Основной контент
-                                    content = delta.get("content", "")
-                                    if content:
-                                        chunk_count += 1
-                                        yield f"data: {json.dumps({'content': content, 'chat_id': chat_id})}\n\n"
-                            except Exception as parse_error:
-                                print(f"⚠️ Ошибка парсинга чанка: {parse_error}")
-                                pass
+                    # Hugging Face возвращает результат сразу (не streaming)
+                    result = response.json()
+                    
+                    if isinstance(result, list) and len(result) > 0:
+                        generated_text = result[0].get("generated_text", "")
+                    elif isinstance(result, dict):
+                        generated_text = result.get("generated_text", "")
+                    else:
+                        generated_text = str(result)
+                    
+                    # Отправляем текст по частям для имитации streaming
+                    words = generated_text.split()
+                    chunk_size = 3  # Отправляем по 3 слова за раз
+                    
+                    for i in range(0, len(words), chunk_size):
+                        chunk_words = words[i:i+chunk_size]
+                        chunk_text = " ".join(chunk_words)
+                        if i + chunk_size < len(words):
+                            chunk_text += " "
+                        
+                        yield f"data: {json.dumps({'content': chunk_text, 'chat_id': chat_id})}\n\n"
+                        await asyncio.sleep(0.05)  # Небольшая задержка для плавности
+                    
+                    yield f"data: [DONE]\n\n"
+                    print(f"✅ Ответ отправлен")
+                    
+                except Exception as e:
+                    print(f"❌ Ошибка при запросе: {str(e)}")
+                    yield f"data: {json.dumps({'error': str(e)})}\n\n"
                     
         except Exception as e:
             print(f"Streaming error: {str(e)}")
