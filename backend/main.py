@@ -151,8 +151,9 @@ async def register(user: UserRegister):
         if os.path.exists(user_file):
             raise HTTPException(status_code=400, detail="Пользователь уже существует")
         
-        # Хешируем пароль
-        hashed_password = pwd_context.hash(user.password)
+        # Хешируем пароль (bcrypt ограничение 72 байта)
+        password_to_hash = user.password[:72] if len(user.password.encode('utf-8')) > 72 else user.password
+        hashed_password = pwd_context.hash(password_to_hash)
         
         # Создаем пользователя
         user_data = {
@@ -198,8 +199,9 @@ async def login(user: UserLogin):
         with open(user_file, "r") as f:
             user_data = json.load(f)
         
-        # Проверяем пароль
-        if not pwd_context.verify(user.password, user_data["password"]):
+        # Проверяем пароль (bcrypt ограничение 72 байта)
+        password_to_verify = user.password[:72] if len(user.password.encode('utf-8')) > 72 else user.password
+        if not pwd_context.verify(password_to_verify, user_data["password"]):
             raise HTTPException(status_code=401, detail="Неверное имя пользователя или пароль")
         
         # Создаем сессию
