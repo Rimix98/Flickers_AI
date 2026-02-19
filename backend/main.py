@@ -130,12 +130,19 @@ def create_session_token() -> str:
 async def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[str]:
     """Получить текущего пользователя из токена"""
     if not authorization or not authorization.startswith("Bearer "):
+        print("⚠️ Нет заголовка Authorization")
         return None
     
     token = authorization.replace("Bearer ", "")
     sessions = load_sessions()
     
-    return sessions.get(token)
+    username = sessions.get(token)
+    if not username:
+        print(f"⚠️ Токен не найден в сессиях. Всего сессий: {len(sessions)}")
+    else:
+        print(f"✅ Пользователь найден: {username}")
+    
+    return username
 
 @app.post("/api/auth/register")
 async def register(user: UserRegister):
