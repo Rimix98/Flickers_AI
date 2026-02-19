@@ -27,9 +27,9 @@ app.add_middleware(
 CHATS_DIR = "chats"
 os.makedirs(CHATS_DIR, exist_ok=True)
 
-# Используем Hugging Face Inference API
+# Используем Hugging Face Inference API (новый роутер с chat completions)
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "")
-API_BASE_URL = "https://api-inference.huggingface.co/models/"
+API_BASE_URL = "https://router.huggingface.co/v1/chat/completions"
 
 # Доступные модели в России (работают через Hugging Face)
 # Отсортированы от самой мощной к самой слабой
@@ -1207,85 +1207,56 @@ class Calculator:
                 
                 if HUGGINGFACE_API_KEY:
                     headers["Authorization"] = f"Bearer {HUGGINGFACE_API_KEY}"
-                
-                # Формируем промпт для Hugging Face (не все модели поддерживают chat format)
-                # Объединяем сообщения в один промпт
-                prompt = ""
-                for msg in messages:
-                    if msg["role"] == "system":
-                        prompt += f"System: {msg['content']}\n\n"
-                    elif msg["role"] == "user":
-                        prompt += f"User: {msg['content']}\n\n"
-                    elif msg["role"] == "assistant":
-                        prompt += f"Assistant: {msg['content']}\n\n"
-                
-                prompt += "Assistant:"
-                
-                # Параметры для Hugging Face
+                # Параметры для Hugging Face Chat Completions API
                 payload = {
-                    "inputs": prompt,
-                    "parameters": {
-                        "max_new_tokens": 2000,
-                        "temperature": 0.3 if request.coding_mode else 0.7,
-                        "top_p": 0.95,
-                        "do_sample": True,
-                        "return_full_text": False,
-                    },
-                    "options": {
-                        "use_cache": False,
-                        "wait_for_model": True,
-                    }
+                    "model": real_model,
+                    "messages": messages,
+                    "max_tokens": 2000,
+                    "temperature": 0.3 if request.coding_mode else 0.7,
+                    "top_p": 0.95,
+                    "stream": True,
                 }
                 
                 chat_id = request.chat_id or datetime.now().strftime("%Y%m%d_%H%M%S")
                 
-                # URL для конкретной модели
-                model_url = f"{API_BASE_URL}{real_model}"
-                
                 print(f"🚀 Отправляем запрос к Hugging Face: {real_model}")
                 
                 try:
-                    response = await client_http.post(
-                        model_url,
+                    async with client_http.stream(
+                        "POST",
+                        API_BASE_URL,
                         json=payload,
                         headers=headers,
                         timeout=120.0
-                    )
-                    
-                    print(f"📡 Статус ответа: {response.status_code}")
-                    
-                    if response.status_code != 200:
-                        error_detail = await response.aread()
-                        error_text = error_detail.decode()
-                        print(f"❌ Ошибка API: {error_text}")
-                        yield f"data: {json.dumps({'error': error_text})}\n\n"
-                        return
-                    
-                    # Hugging Face возвращает результат сразу (не streaming)
-                    result = response.json()
-                    
-                    if isinstance(result, list) and len(result) > 0:
-                        generated_text = result[0].get("generated_text", "")
-                    elif isinstance(result, dict):
-                        generated_text = result.get("generated_text", "")
-                    else:
-                        generated_text = str(result)
-                    
-                    # Отправляем текст по частям для имитации streaming
-                    words = generated_text.split()
-                    chunk_size = 3  # Отправляем по 3 слова за раз
-                    
-                    for i in range(0, len(words), chunk_size):
-                        chunk_words = words[i:i+chunk_size]
-                        chunk_text = " ".join(chunk_words)
-                        if i + chunk_size < len(words):
-                            chunk_text += " "
+                    ) as response:
+                        print(f"📡 Статус ответа: {response.status_code}")
                         
-                        yield f"data: {json.dumps({'content': chunk_text, 'chat_id': chat_id})}\n\n"
-                        await asyncio.sleep(0.05)  # Небольшая задержка для плавности
-                    
-                    yield f"data: [DONE]\n\n"
-                    print(f"✅ Ответ отправлен")
+                        if response.status_code != 200:
+                            error_detail = await response.aread()
+                            error_text = error_detail.decode()
+                            print(f"❌ Ошибка API: {error_text}")
+                            yield f"data: {json.dumps({'error': error_text})}\n\n"
+                            return
+                        
+                        # Читаем streaming ответ (формат SSE)
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: "):
+                                data_str = line[6:]
+                                if data_str == "[DONE]":
+                                    yield f"data: [DONE]\n\n"
+                                    print(f"✅ Ответ отправлен")
+                                    break
+                                
+                                try:
+                                    data = json.loads(data_str)
+                                    if "choices" in data and len(data["choices"]) > 0:
+                                        delta = data["choices"][0].get("delta", {})
+                                        content = delta.get("content", "")
+                                        if content:
+                                            yield f"data: {json.dumps({'content': content, 'chat_id': chat_id})}\n\n"
+                                            await asyncio.sleep(0.01)
+                                except json.JSONDecodeError:
+                                    pass
                     
                 except Exception as e:
                     print(f"❌ Ошибка при запросе: {str(e)}")
