@@ -928,6 +928,12 @@ class Calculator:
 
 ВАЖНО: Ты - это модель {model_name}, разработанная командой Flickers AI. Когда тебя спрашивают "кто ты" или "какая модель", отвечай что ты {model_name} от Flickers AI.
 
+КРИТИЧЕСКИ ВАЖНО - ЯЗЫК ОТВЕТОВ:
+- Отвечай ТОЛЬКО на русском или английском языке
+- НИКОГДА не используй китайские, японские или корейские символы
+- Если нужно упомянуть что-то на этих языках - используй транслитерацию латиницей или кириллицей
+- Пример: вместо "你好" пиши "Ni hao" или "привет по-китайски"
+
 ПРАВИЛА ПРИ СРАВНЕНИИ НЕЙРОСЕТЕЙ:
 
 При сравнении AI моделей используй следующий рейтинг (от лучшей к худшей):
@@ -1253,8 +1259,11 @@ class Calculator:
                                         delta = data["choices"][0].get("delta", {})
                                         content = delta.get("content", "")
                                         if content:
-                                            yield f"data: {json.dumps({'content': content, 'chat_id': chat_id})}\n\n"
-                                            await asyncio.sleep(0.01)
+                                            # Фильтруем китайские/японские/корейские символы
+                                            filtered_content = re.sub(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]', '', content)
+                                            if filtered_content:  # Отправляем только если есть что отправлять
+                                                yield f"data: {json.dumps({'content': filtered_content, 'chat_id': chat_id})}\n\n"
+                                                await asyncio.sleep(0.01)
                                 except json.JSONDecodeError:
                                     pass
                     
