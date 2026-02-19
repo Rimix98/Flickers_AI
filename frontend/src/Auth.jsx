@@ -34,7 +34,6 @@ export default function Auth({ onLogin, language = 'ru' }) {
         throw new Error(data.detail || 'Ошибка');
       }
 
-      // Сохраняем токен
       localStorage.setItem('token', data.token);
       localStorage.setItem('username', data.username);
 
@@ -48,66 +47,113 @@ export default function Auth({ onLogin, language = 'ru' }) {
 
   return (
     <div className="auth-container">
-      <div className="auth-box">
-        <div className="auth-logo">
-          <svg viewBox="0 0 100 100" width="60" height="60">
-            <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="3"/>
-            <path d="M30 50 L45 65 L70 35" fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </div>
+      <div className="auth-background">
+        <div className="gradient-orb orb-1"></div>
+        <div className="gradient-orb orb-2"></div>
+        <div className="gradient-orb orb-3"></div>
+      </div>
 
-        <h1>Flickers AI</h1>
-        <p className="auth-subtitle">
-          {isLogin ? t('loginSubtitle') : t('registerSubtitle')}
-        </p>
-
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label>{t('username')}</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder={t('usernamePlaceholder')}
-              required
-              minLength={3}
-              autoComplete="username"
-            />
+      <div className="auth-content">
+        <div className="auth-box">
+          <div className="auth-header">
+            <div className="logo-container">
+              <div className="logo-circle">
+                <svg viewBox="0 0 100 100" className="logo-svg">
+                  <defs>
+                    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#667eea" />
+                      <stop offset="100%" stopColor="#764ba2" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="50" cy="50" r="45" fill="none" stroke="url(#logoGradient)" strokeWidth="3"/>
+                  <path d="M30 50 L45 65 L70 35" fill="none" stroke="url(#logoGradient)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <h1 className="logo-text">Flickers AI</h1>
+            </div>
+            <p className="auth-subtitle">
+              {isLogin ? t('loginSubtitle') : t('registerSubtitle')}
+            </p>
           </div>
 
-          <div className="form-group">
-            <label>{t('password')}</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={t('passwordPlaceholder')}
-              required
-              minLength={4}
-              autoComplete={isLogin ? 'current-password' : 'new-password'}
-            />
+          <div className="auth-tabs">
+            <button
+              type="button"
+              className={`tab ${isLogin ? 'active' : ''}`}
+              onClick={() => {
+                setIsLogin(true);
+                setError('');
+              }}
+            >
+              {t('login')}
+            </button>
+            <button
+              type="button"
+              className={`tab ${!isLogin ? 'active' : ''}`}
+              onClick={() => {
+                setIsLogin(false);
+                setError('');
+              }}
+            >
+              {t('register')}
+            </button>
+            <div className={`tab-indicator ${isLogin ? 'left' : 'right'}`}></div>
           </div>
 
-          {error && <div className="auth-error">{error}</div>}
+          <form onSubmit={handleSubmit} className="auth-form">
+            <div className="form-group">
+              <label>{t('username')}</label>
+              <div className="input-wrapper">
+                <span className="input-icon">👤</span>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder={t('usernamePlaceholder')}
+                  required
+                  minLength={3}
+                  autoComplete="username"
+                />
+              </div>
+            </div>
 
-          <button type="submit" className="auth-button" disabled={loading}>
-            {loading ? t('loading') : (isLogin ? t('login') : t('register'))}
-          </button>
-        </form>
+            <div className="form-group">
+              <label>{t('password')}</label>
+              <div className="input-wrapper">
+                <span className="input-icon">🔒</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={t('passwordPlaceholder')}
+                  required
+                  minLength={4}
+                  autoComplete={isLogin ? 'current-password' : 'new-password'}
+                />
+              </div>
+            </div>
 
-        <div className="auth-switch">
-          {isLogin ? t('noAccount') : t('haveAccount')}
-          {' '}
-          <button
-            type="button"
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError('');
-            }}
-            className="auth-switch-button"
-          >
-            {isLogin ? t('register') : t('login')}
-          </button>
+            {error && (
+              <div className="auth-error">
+                <span className="error-icon">⚠️</span>
+                {error}
+              </div>
+            )}
+
+            <button type="submit" className="auth-button" disabled={loading}>
+              {loading ? (
+                <span className="loading-spinner"></span>
+              ) : (
+                <span>{isLogin ? t('login') : t('register')}</span>
+              )}
+            </button>
+          </form>
+
+          <div className="auth-footer">
+            <p className="footer-text">
+              {isLogin ? t('noAccount') : t('haveAccount')}
+            </p>
+          </div>
         </div>
       </div>
     </div>
