@@ -632,7 +632,7 @@ function App() {
 
   // Show auth screen if not authenticated
   if (!isAuthenticated) {
-    return <Auth onLogin={handleLogin} translations={getTranslation(settings.language)} />
+    return <Auth onLogin={handleLogin} language={settings.language} />
   }
 
   return (

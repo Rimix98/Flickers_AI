@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import './Auth.css';
+import { getTranslation } from './translations';
 
-export default function Auth({ onLogin, translations }) {
+export default function Auth({ onLogin, language = 'ru' }) {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -9,6 +10,8 @@ export default function Auth({ onLogin, translations }) {
   const [loading, setLoading] = useState(false);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  
+  const t = (key) => getTranslation(language, key);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -55,17 +58,17 @@ export default function Auth({ onLogin, translations }) {
 
         <h1>Flickers AI</h1>
         <p className="auth-subtitle">
-          {isLogin ? translations.loginSubtitle : translations.registerSubtitle}
+          {isLogin ? t('loginSubtitle') : t('registerSubtitle')}
         </p>
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
-            <label>{translations.username}</label>
+            <label>{t('username')}</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder={translations.usernamePlaceholder}
+              placeholder={t('usernamePlaceholder')}
               required
               minLength={3}
               autoComplete="username"
@@ -73,12 +76,12 @@ export default function Auth({ onLogin, translations }) {
           </div>
 
           <div className="form-group">
-            <label>{translations.password}</label>
+            <label>{t('password')}</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={translations.passwordPlaceholder}
+              placeholder={t('passwordPlaceholder')}
               required
               minLength={4}
               autoComplete={isLogin ? 'current-password' : 'new-password'}
@@ -88,12 +91,12 @@ export default function Auth({ onLogin, translations }) {
           {error && <div className="auth-error">{error}</div>}
 
           <button type="submit" className="auth-button" disabled={loading}>
-            {loading ? translations.loading : (isLogin ? translations.login : translations.register)}
+            {loading ? t('loading') : (isLogin ? t('login') : t('register'))}
           </button>
         </form>
 
         <div className="auth-switch">
-          {isLogin ? translations.noAccount : translations.haveAccount}
+          {isLogin ? t('noAccount') : t('haveAccount')}
           {' '}
           <button
             type="button"
@@ -103,7 +106,7 @@ export default function Auth({ onLogin, translations }) {
             }}
             className="auth-switch-button"
           >
-            {isLogin ? translations.register : translations.login}
+            {isLogin ? t('register') : t('login')}
           </button>
         </div>
       </div>
