@@ -359,6 +359,27 @@
   color: rgba(255, 255, 255, 0.6);
   font-size: 14px;
   margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.footer-link {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.3s;
+  text-decoration: underline;
+}
+
+.footer-link:hover {
+  color: #764ba2;
+  transform: translateY(-1px);
 }
 
 /* Responsive */

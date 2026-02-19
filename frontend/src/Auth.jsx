@@ -152,6 +152,17 @@ export default function Auth({ onLogin, language = 'ru' }) {
           <div className="auth-footer">
             <p className="footer-text">
               {isLogin ? t('noAccount') : t('haveAccount')}
+              {' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setError('');
+                }}
+                className="footer-link"
+              >
+                {isLogin ? t('register') : t('login')}
+              </button>
             </p>
           </div>
         </div>
