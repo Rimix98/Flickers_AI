@@ -168,16 +168,19 @@
 
 .tab {
   flex: 1;
-  padding: 12px;
+  padding: 12px 8px;
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: color 0.3s;
   position: relative;
   z-index: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tab.active {
@@ -361,7 +364,7 @@
 /* Responsive */
 @media (max-width: 480px) {
   .auth-box {
-    padding: 30px 24px;
+    padding: 30px 20px;
   }
   
   .logo-text {
@@ -376,6 +379,16 @@
   .logo-svg {
     width: 40px;
     height: 40px;
+  }
+  
+  .tab {
+    font-size: 13px;
+    padding: 10px 6px;
+  }
+  
+  .auth-button {
+    font-size: 15px;
+    padding: 14px;
   }
 }
 
