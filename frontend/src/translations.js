@@ -8,7 +8,7 @@ export const translations = {
     password: "Пароль",
     passwordPlaceholder: "Введите пароль",
     login: "Войти",
-    register: "Зарегистрироваться",
+    register: "Регистрация",
     logout: "Выйти",
     loading: "Загрузка...",
     noAccount: "Нет аккаунта?",

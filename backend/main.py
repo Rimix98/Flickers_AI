@@ -1359,7 +1359,6 @@ class Calculator:
                 
                 # Проверяем вычисления
                 if any(word in last_user_msg.lower() for word in ["посчитай", "вычисли", "сколько будет", "результат"]):
-                    import re
                     expr = re.search(r'[\d\+\-\*/\(\)\. ]+', last_user_msg)
                     if expr:
                         calc_result = await calculate(expr.group().strip())

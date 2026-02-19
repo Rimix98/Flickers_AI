@@ -7,6 +7,23 @@ import Auth from './Auth'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// Helper functions for model display
+const getModelIcon = (modelName) => {
+  if (modelName.includes('ULTRA')) return '🚀';
+  if (modelName.includes('PRO')) return '⚡';
+  if (modelName.includes('FAST')) return '💨';
+  if (modelName.includes('CODING')) return '💻';
+  return '✨';
+};
+
+const getModelDescription = (modelName) => {
+  if (modelName.includes('ULTRA')) return 'Максимальная мощность';
+  if (modelName.includes('PRO')) return 'Профессиональный уровень';
+  if (modelName.includes('FAST')) return 'Быстрые ответы';
+  if (modelName.includes('CODING')) return 'Для программирования';
+  return 'Универсальная модель';
+};
+
 // Мемоизированный компонент Sidebar чтобы избежать ре-рендера при печатании
 const Sidebar = memo(({ 
   darkMode, 
@@ -175,14 +192,30 @@ function App() {
       // Отключено для избежания ошибок
     };
 
+    // Close dropdown when clicking outside
+    const handleClickOutside = (e) => {
+      const dropdowns = document.querySelectorAll('.model-dropdown');
+      dropdowns.forEach(dropdown => {
+        if (!dropdown.contains(e.target)) {
+          const menu = dropdown.querySelector('.model-dropdown-menu');
+          if (menu) {
+            menu.classList.remove('show');
+            dropdown.classList.remove('active');
+          }
+        }
+      });
+    };
+
     window.addEventListener('mousemove', handleMouseMove)
     window.addEventListener('mousedown', handleMouseDown)
     window.addEventListener('mouseup', handleMouseUp)
+    document.addEventListener('click', handleClickOutside)
     
     return () => {
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mousedown', handleMouseDown)
       window.removeEventListener('mouseup', handleMouseUp)
+      document.removeEventListener('click', handleClickOutside)
     }
   }, [])
 
@@ -897,17 +930,45 @@ function App() {
                 
                 <div className="welcome-model-selector">
                   <label>{t('selectModel')}</label>
-                  <select 
-                    value={selectedModel} 
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    className="model-select"
-                  >
-                    {availableModels.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="model-dropdown">
+                    <button 
+                      className="model-dropdown-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const dropdown = e.currentTarget.parentElement;
+                        const menu = dropdown.querySelector('.model-dropdown-menu');
+                        menu.classList.toggle('show');
+                        dropdown.classList.toggle('active');
+                      }}
+                    >
+                      <span className="model-icon">{getModelIcon(selectedModel)}</span>
+                      <span className="model-name">{selectedModel}</span>
+                      <span className="dropdown-arrow">▼</span>
+                    </button>
+                    <div className="model-dropdown-menu">
+                      {availableModels.map((model) => (
+                        <div
+                          key={model}
+                          className={`model-option ${selectedModel === model ? 'selected' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedModel(model);
+                            const menu = e.currentTarget.parentElement;
+                            const dropdown = menu.parentElement;
+                            menu.classList.remove('show');
+                            dropdown.classList.remove('active');
+                          }}
+                        >
+                          <span className="model-icon">{getModelIcon(model)}</span>
+                          <div className="model-info">
+                            <span className="model-name">{model}</span>
+                            <span className="model-description">{getModelDescription(model)}</span>
+                          </div>
+                          {selectedModel === model && <span className="check-icon">✓</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 <button 
