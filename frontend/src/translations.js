@@ -1,5 +1,19 @@
 export const translations = {
   ru: {
+    // Auth
+    loginSubtitle: "Войдите чтобы продолжить",
+    registerSubtitle: "Создайте аккаунт чтобы начать",
+    username: "Имя пользователя",
+    usernamePlaceholder: "Введите имя пользователя",
+    password: "Пароль",
+    passwordPlaceholder: "Введите пароль",
+    login: "Войти",
+    register: "Зарегистрироваться",
+    logout: "Выйти",
+    loading: "Загрузка...",
+    noAccount: "Нет аккаунта?",
+    haveAccount: "Уже есть аккаунт?",
+    
     // Sidebar
     search: "Поиск...",
     newChat: "✨ Новый чат",
@@ -96,6 +110,20 @@ export const translations = {
   },
   
   en: {
+    // Auth
+    loginSubtitle: "Sign in to continue",
+    registerSubtitle: "Create an account to get started",
+    username: "Username",
+    usernamePlaceholder: "Enter username",
+    password: "Password",
+    passwordPlaceholder: "Enter password",
+    login: "Sign In",
+    register: "Sign Up",
+    logout: "Sign Out",
+    loading: "Loading...",
+    noAccount: "Don't have an account?",
+    haveAccount: "Already have an account?",
+    
     // Sidebar
     search: "Search...",
     newChat: "✨ New Chat",

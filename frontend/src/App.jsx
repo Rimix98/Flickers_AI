@@ -3,8 +3,9 @@ import axios from 'axios'
 import { marked } from 'marked'
 import './App.css'
 import { getTranslation } from './translations'
+import Auth from './Auth'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 // Мемоизированный компонент Sidebar чтобы избежать ре-рендера при печатании
 const Sidebar = memo(({ 
@@ -88,6 +89,11 @@ const Sidebar = memo(({
 Sidebar.displayName = 'Sidebar'
 
 function App() {
+  // Auth state
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [token, setToken] = useState(null)
+  const [username, setUsername] = useState(null)
+  
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -98,6 +104,43 @@ function App() {
   const [isThinking, setIsThinking] = useState(false)
   const [darkMode, setDarkMode] = useState(true)
   const [selectedModel, setSelectedModel] = useState('Flickers AI 2.5 FAST')
+  
+  // Check auth on mount
+  useEffect(() => {
+    const savedToken = localStorage.getItem('token')
+    const savedUsername = localStorage.getItem('username')
+    
+    if (savedToken && savedUsername) {
+      setToken(savedToken)
+      setUsername(savedUsername)
+      setIsAuthenticated(true)
+    }
+  }, [])
+  
+  const handleLogin = (newToken, newUsername) => {
+    setToken(newToken)
+    setUsername(newUsername)
+    setIsAuthenticated(true)
+  }
+  
+  const handleLogout = async () => {
+    try {
+      await axios.post(`${API_URL}/api/auth/logout`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+    } catch (err) {
+      console.error('Logout error:', err)
+    }
+    
+    localStorage.removeItem('token')
+    localStorage.removeItem('username')
+    setToken(null)
+    setUsername(null)
+    setIsAuthenticated(false)
+    setMessages([])
+    setChatHistory([])
+    setCurrentChatId(null)
+  }
   const [availableModels, setAvailableModels] = useState([])
   const [currentChatId, setCurrentChatId] = useState(null)
   const [chatHistory, setChatHistory] = useState([])
@@ -156,7 +199,9 @@ function App() {
 
   useEffect(() => {
     loadModels()
-    loadChatHistory()
+    if (isAuthenticated && token) {
+      loadChatHistory()
+    }
     const savedTheme = localStorage.getItem('theme')
     if (savedTheme) setDarkMode(savedTheme === 'dark')
     
@@ -254,17 +299,28 @@ function App() {
   }
 
   const loadChatHistory = async () => {
+    if (!token) return
+    
     try {
-      const response = await axios.get(`${API_URL}/api/chats`)
+      const response = await axios.get(`${API_URL}/api/chats`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
       setChatHistory(response.data.chats)
     } catch (error) {
       console.error('Error loading chat history:', error)
+      if (error.response?.status === 401) {
+        handleLogout()
+      }
     }
   }
 
   const loadChat = useCallback(async (chatId) => {
+    if (!token) return
+    
     try {
-      const response = await axios.get(`${API_URL}/api/chats/${chatId}`)
+      const response = await axios.get(`${API_URL}/api/chats/${chatId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
       setMessages(response.data.messages)
       setSelectedModel(response.data.model)
       setCurrentChatId(chatId)
@@ -275,11 +331,14 @@ function App() {
       }
     } catch (error) {
       console.error('Error loading chat:', error)
+      if (error.response?.status === 401) {
+        handleLogout()
+      }
     }
   }, [])
 
   const saveChat = async () => {
-    if (messages.length === 0) return
+    if (messages.length === 0 || !token) return
 
     let title = messages[0]?.content.substring(0, 50) || 'Новый чат'
     const chatId = currentChatId || new Date().getTime().toString()
@@ -307,17 +366,26 @@ function App() {
         title,
         messages,
         model: selectedModel
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       })
       setCurrentChatId(chatId)
       loadChatHistory()
     } catch (error) {
       console.error('Error saving chat:', error)
+      if (error.response?.status === 401) {
+        handleLogout()
+      }
     }
   }
 
   const deleteChat = useCallback(async (chatId) => {
+    if (!token) return
+    
     try {
-      await axios.delete(`${API_URL}/api/chats/${chatId}`)
+      await axios.delete(`${API_URL}/api/chats/${chatId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
       loadChatHistory()
       if (currentChatId === chatId) {
         newChat()
@@ -562,6 +630,11 @@ function App() {
     }
   }
 
+  // Show auth screen if not authenticated
+  if (!isAuthenticated) {
+    return <Auth onLogin={handleLogin} translations={getTranslation(settings.language)} />
+  }
+
   return (
     <div className={`app ${darkMode ? 'dark' : 'light'} ${showSidebar ? 'sidebar-open' : ''} ${codingMode ? 'coding-mode' : ''} ${freedomMode ? 'freedom-mode' : ''}`}>
       <div className="cursor-follower" />
@@ -652,6 +725,9 @@ function App() {
               </button>
               <button className="theme-toggle" onClick={() => setDarkMode(!darkMode)}>
                 {darkMode ? '☀️' : '🌙'}
+              </button>
+              <button className="logout-btn" onClick={handleLogout} title={t('logout')}>
+                👤 {username}
               </button>
             </div>
           </div>

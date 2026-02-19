@@ -1,15 +1,18 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import httpx
 from dotenv import load_dotenv
 import asyncio
 import re
+import hashlib
+import secrets
+from passlib.context import CryptContext
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -26,6 +29,14 @@ app.add_middleware(
 
 CHATS_DIR = "chats"
 os.makedirs(CHATS_DIR, exist_ok=True)
+
+USERS_DIR = "users"
+os.makedirs(USERS_DIR, exist_ok=True)
+
+SESSIONS_FILE = "sessions.json"
+
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Используем Hugging Face Inference API (новый роутер с chat completions)
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "")
@@ -56,6 +67,14 @@ class Message(BaseModel):
     content: str
     codingMode: Optional[bool] = False  # Режим кодинга
 
+class UserRegister(BaseModel):
+    username: str
+    password: str
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
 class ChatRequest(BaseModel):
     messages: List[Message]
     model: str = "meta-llama/llama-3.1-8b-instruct"
@@ -81,6 +100,153 @@ class SaveChatRequest(BaseModel):
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "Flickers AI API", "version": "1.0.0"}
+
+# === AUTHENTICATION ===
+
+def load_sessions():
+    """Загрузить сессии из файла"""
+    if os.path.exists(SESSIONS_FILE):
+        with open(SESSIONS_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_sessions(sessions):
+    """Сохранить сессии в файл"""
+    with open(SESSIONS_FILE, "w") as f:
+        json.dump(sessions, f)
+
+def get_user_file(username: str) -> str:
+    """Получить путь к файлу пользователя"""
+    return os.path.join(USERS_DIR, f"{username}.json")
+
+def create_session_token() -> str:
+    """Создать уникальный токен сессии"""
+    return secrets.token_urlsafe(32)
+
+async def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[str]:
+    """Получить текущего пользователя из токена"""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    
+    token = authorization.replace("Bearer ", "")
+    sessions = load_sessions()
+    
+    return sessions.get(token)
+
+@app.post("/api/auth/register")
+async def register(user: UserRegister):
+    """Регистрация нового пользователя"""
+    try:
+        username = user.username.strip().lower()
+        
+        # Валидация
+        if len(username) < 3:
+            raise HTTPException(status_code=400, detail="Имя пользователя должно быть минимум 3 символа")
+        
+        if len(user.password) < 4:
+            raise HTTPException(status_code=400, detail="Пароль должен быть минимум 4 символа")
+        
+        # Проверка существования
+        user_file = get_user_file(username)
+        if os.path.exists(user_file):
+            raise HTTPException(status_code=400, detail="Пользователь уже существует")
+        
+        # Хешируем пароль
+        hashed_password = pwd_context.hash(user.password)
+        
+        # Создаем пользователя
+        user_data = {
+            "username": username,
+            "password": hashed_password,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        with open(user_file, "w") as f:
+            json.dump(user_data, f)
+        
+        # Создаем сессию
+        token = create_session_token()
+        sessions = load_sessions()
+        sessions[token] = username
+        save_sessions(sessions)
+        
+        print(f"✅ Зарегистрирован пользователь: {username}")
+        
+        return {
+            "token": token,
+            "username": username
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Ошибка регистрации: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/auth/login")
+async def login(user: UserLogin):
+    """Вход пользователя"""
+    try:
+        username = user.username.strip().lower()
+        user_file = get_user_file(username)
+        
+        # Проверка существования
+        if not os.path.exists(user_file):
+            raise HTTPException(status_code=401, detail="Неверное имя пользователя или пароль")
+        
+        # Загружаем данные пользователя
+        with open(user_file, "r") as f:
+            user_data = json.load(f)
+        
+        # Проверяем пароль
+        if not pwd_context.verify(user.password, user_data["password"]):
+            raise HTTPException(status_code=401, detail="Неверное имя пользователя или пароль")
+        
+        # Создаем сессию
+        token = create_session_token()
+        sessions = load_sessions()
+        sessions[token] = username
+        save_sessions(sessions)
+        
+        print(f"✅ Вход пользователя: {username}")
+        
+        return {
+            "token": token,
+            "username": username
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Ошибка входа: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/auth/logout")
+async def logout(authorization: Optional[str] = Header(None)):
+    """Выход пользователя"""
+    if not authorization or not authorization.startswith("Bearer "):
+        return {"status": "ok"}
+    
+    token = authorization.replace("Bearer ", "")
+    sessions = load_sessions()
+    
+    if token in sessions:
+        username = sessions[token]
+        del sessions[token]
+        save_sessions(sessions)
+        print(f"✅ Выход пользователя: {username}")
+    
+    return {"status": "ok"}
+
+@app.get("/api/auth/me")
+async def get_me(username: Optional[str] = Depends(get_current_user)):
+    """Получить текущего пользователя"""
+    if not username:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+    
+    return {"username": username}
+
+# === END AUTHENTICATION ===
 
 async def web_search(query: str) -> str:
     """Выполняет поиск в интернете через DuckDuckGo Instant Answer API"""
@@ -1278,11 +1444,15 @@ class Calculator:
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 @app.post("/api/chats/save")
-async def save_chat(request: SaveChatRequest):
+async def save_chat(request: SaveChatRequest, username: Optional[str] = Depends(get_current_user)):
     try:
+        if not username:
+            raise HTTPException(status_code=401, detail="Не авторизован")
+        
         chat_data = {
             "id": request.chat_id,
             "title": request.title,
+            "username": username,  # Привязываем к пользователю
             "messages": [
                 {
                     "role": m.role, 
@@ -1296,67 +1466,96 @@ async def save_chat(request: SaveChatRequest):
             "updated_at": datetime.now().isoformat()
         }
         
-        print(f"💾 Сохраняем чат {request.chat_id}, сообщений: {len(request.messages)}")
-        for idx, msg in enumerate(chat_data["messages"]):
-            print(f"  Сообщение {idx}: role={msg['role']}, codingMode={msg.get('codingMode', False)}")
+        print(f"💾 Сохраняем чат {request.chat_id} для пользователя {username}, сообщений: {len(request.messages)}")
         
-        file_path = os.path.join(CHATS_DIR, f"{request.chat_id}.json")
+        file_path = os.path.join(CHATS_DIR, f"{username}_{request.chat_id}.json")
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(chat_data, f, ensure_ascii=False, indent=2)
         
         return {"status": "ok", "chat_id": request.chat_id}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Ошибка сохранения чата: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/chats")
-async def list_chats():
+async def list_chats(username: Optional[str] = Depends(get_current_user)):
     try:
+        if not username:
+            raise HTTPException(status_code=401, detail="Не авторизован")
+        
         chats = []
+        prefix = f"{username}_"
+        
         for filename in os.listdir(CHATS_DIR):
-            if filename.endswith(".json"):
+            if filename.startswith(prefix) and filename.endswith(".json"):
                 file_path = os.path.join(CHATS_DIR, filename)
                 with open(file_path, "r", encoding="utf-8") as f:
                     chat_data = json.load(f)
-                    chats.append({
-                        "id": chat_data["id"],
-                        "title": chat_data["title"],
-                        "updated_at": chat_data["updated_at"],
-                        "model": chat_data.get("model", "llama3.2")
-                    })
+                    # Проверяем что чат принадлежит пользователю
+                    if chat_data.get("username") == username:
+                        chats.append({
+                            "id": chat_data["id"],
+                            "title": chat_data["title"],
+                            "updated_at": chat_data["updated_at"],
+                            "model": chat_data.get("model", "llama3.2")
+                        })
         
         chats.sort(key=lambda x: x["updated_at"], reverse=True)
         return {"chats": chats}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/chats/{chat_id}")
-async def get_chat(chat_id: str):
+async def get_chat(chat_id: str, username: Optional[str] = Depends(get_current_user)):
     try:
-        file_path = os.path.join(CHATS_DIR, f"{chat_id}.json")
+        if not username:
+            raise HTTPException(status_code=401, detail="Не авторизован")
+        
+        file_path = os.path.join(CHATS_DIR, f"{username}_{chat_id}.json")
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Chat not found")
         
         with open(file_path, "r", encoding="utf-8") as f:
             chat_data = json.load(f)
         
-        print(f"📂 Загружаем чат {chat_id}, сообщений: {len(chat_data.get('messages', []))}")
-        for idx, msg in enumerate(chat_data.get('messages', [])):
-            print(f"  Сообщение {idx}: role={msg.get('role')}, codingMode={msg.get('codingMode', False)}")
+        # Проверяем что чат принадлежит пользователю
+        if chat_data.get("username") != username:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        print(f"📂 Загружаем чат {chat_id} для пользователя {username}")
         
         return chat_data
+    except HTTPException:
+        raise
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Chat not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/chats/{chat_id}")
-async def delete_chat(chat_id: str):
+async def delete_chat(chat_id: str, username: Optional[str] = Depends(get_current_user)):
     try:
-        file_path = os.path.join(CHATS_DIR, f"{chat_id}.json")
+        if not username:
+            raise HTTPException(status_code=401, detail="Не авторизован")
+        
+        file_path = os.path.join(CHATS_DIR, f"{username}_{chat_id}.json")
         if os.path.exists(file_path):
+            # Проверяем владельца
+            with open(file_path, "r", encoding="utf-8") as f:
+                chat_data = json.load(f)
+            
+            if chat_data.get("username") != username:
+                raise HTTPException(status_code=403, detail="Access denied")
+            
             os.remove(file_path)
+        
         return {"status": "ok"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
