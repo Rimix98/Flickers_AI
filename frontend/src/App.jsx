@@ -19,7 +19,8 @@ const getModelIcon = (modelName) => {
 const getModelDescription = (modelName) => {
   if (modelName.includes('ULTRA')) return 'Максимальная мощность';
   if (modelName.includes('PRO')) return 'Профессиональный уровень';
-  if (modelName.includes('FAST')) return 'Быстрые ответы';
+  if (modelName.includes('2.5 FAST')) return 'Быстрые ответы';
+  if (modelName.includes('2.0 FAST')) return 'Очень быстрые ответы';
   if (modelName.includes('CODING')) return 'Для программирования';
   return 'Универсальная модель';
 };
@@ -120,7 +121,10 @@ function App() {
   const [showReasoning, setShowReasoning] = useState(true)
   const [isThinking, setIsThinking] = useState(false)
   const [darkMode, setDarkMode] = useState(true)
-  const [selectedModel, setSelectedModel] = useState('Flickers AI 2.5 FAST')
+  const [selectedModel, setSelectedModel] = useState('Flickers AI 2.5 PRO')
+  const [showImageMenu, setShowImageMenu] = useState(false)
+  const [generatingImage, setGeneratingImage] = useState(false)
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
   
   // Check auth on mount
   useEffect(() => {
@@ -226,7 +230,7 @@ function App() {
     } else if (freedomMode) {
       setSelectedModel('Flickers AI 2.0 ULTRA')
     } else {
-      setSelectedModel('Flickers AI 2.5 FAST')
+      setSelectedModel('Flickers AI 2.5 PRO')
     }
   }, [codingMode, freedomMode])
 
@@ -502,6 +506,56 @@ function App() {
       chat.title.toLowerCase().includes(searchQuery.toLowerCase())
     ), [chatHistory, searchQuery]
   )
+
+  const generateImage = async () => {
+    if (!input.trim()) {
+      alert(t('enterPrompt') || 'Введите описание изображения')
+      return
+    }
+
+    setGeneratingImage(true)
+    setShowImageMenu(false)
+
+    try {
+      const response = await axios.post(
+        `${API_URL}/api/generate-image`,
+        { prompt: input },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+
+      // Добавляем сообщение пользователя с промптом
+      const userMessage = {
+        role: 'user',
+        content: `🎨 ${t('generateImage') || 'Сгенерируй изображение'}: ${input}`
+      }
+
+      // Формируем текст ответа с переводом, если он есть
+      let assistantContent = `${t('imageGenerated') || 'Изображение сгенерировано'}:`
+      if (response.data.prompt_en && response.data.prompt_en !== input) {
+        assistantContent += `\n\n💬 Перевод: "${response.data.prompt_en}"`
+      }
+
+      // Добавляем ответ с изображением
+      const assistantMessage = {
+        role: 'assistant',
+        content: assistantContent,
+        image: response.data.image
+      }
+
+      setMessages(prev => [...prev, userMessage, assistantMessage])
+      setInput('')
+
+      // Сохраняем чат
+      if (!freedomMode) {
+        setTimeout(saveChat, 500)
+      }
+    } catch (error) {
+      console.error('Error generating image:', error)
+      alert(error.response?.data?.detail || t('imageError') || 'Ошибка генерации изображения')
+    } finally {
+      setGeneratingImage(false)
+    }
+  }
 
   const sendMessage = async () => {
     if (!input.trim()) return
@@ -937,8 +991,10 @@ function App() {
                         e.stopPropagation();
                         const dropdown = e.currentTarget.parentElement;
                         const menu = dropdown.querySelector('.model-dropdown-menu');
+                        const isOpening = !menu.classList.contains('show');
                         menu.classList.toggle('show');
                         dropdown.classList.toggle('active');
+                        setModelDropdownOpen(isOpening);
                       }}
                     >
                       <span className="model-icon">{getModelIcon(selectedModel)}</span>
@@ -957,6 +1013,7 @@ function App() {
                             const dropdown = menu.parentElement;
                             menu.classList.remove('show');
                             dropdown.classList.remove('active');
+                            setModelDropdownOpen(false);
                           }}
                         >
                           <span className="model-icon">{getModelIcon(model)}</span>
@@ -972,7 +1029,7 @@ function App() {
                 </div>
 
                 <button 
-                  className="welcome-surprise-btn" 
+                  className={`welcome-surprise-btn ${modelDropdownOpen ? 'dropdown-open' : ''}`}
                   onClick={() => setShowSurprise(true)}
                 >
                   {t('surpriseBtn')}
@@ -1123,7 +1180,6 @@ function App() {
                       <span></span>
                       <span></span>
                     </div>
-                    <span className="thinking-text">Думаю...</span>
                   </div>
                 </div>
               </div>
@@ -1137,7 +1193,6 @@ function App() {
                       <summary className="reasoning-summary">
                         <span className="reasoning-icon">💭</span>
                         <span>Процесс размышления</span>
-                        <span className="reasoning-badge">Думаю...</span>
                       </summary>
                       <div 
                         className="reasoning-text streaming"
@@ -1157,18 +1212,38 @@ function App() {
           </div>
 
           <div className="input-area">
+            <button 
+              className="image-menu-btn" 
+              onClick={() => setShowImageMenu(!showImageMenu)}
+              disabled={loading || generatingImage}
+              title={t('imageMenu') || 'Генерация изображений'}
+            >
+              ⋯
+            </button>
+            {showImageMenu && (
+              <div className="image-menu">
+                <button 
+                  className="image-menu-item"
+                  onClick={generateImage}
+                  disabled={generatingImage || loading}
+                >
+                  <span className="menu-icon">🎨</span>
+                  <span>{generatingImage ? (t('generating') || 'Генерация...') : (t('generateImage') || 'Сгенерировать изображение')}</span>
+                </button>
+              </div>
+            )}
             <div className="input-wrapper">
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && !generatingImage && sendMessage()}
                 placeholder={codingMode ? t('inputPlaceholderCoding') : freedomMode ? t('inputPlaceholderFreedom') : t('inputPlaceholder')}
-                disabled={loading}
+                disabled={loading || generatingImage}
               />
             </div>
-            <button className="send-button" onClick={sendMessage} disabled={loading}>
-              {loading ? '⏳' : '→'}
+            <button className="send-button" onClick={sendMessage} disabled={loading || generatingImage}>
+              {generatingImage ? '🎨' : loading ? '⏳' : '→'}
             </button>
           </div>
         </div>

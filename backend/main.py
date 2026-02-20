@@ -1575,60 +1575,275 @@ async def list_models():
 
 @app.post("/api/generate-title")
 async def generate_title(request: dict):
-    """Генерирует название чата на основе первого сообщения"""
+    """Генерирует умное название чата на основе первого сообщения"""
     try:
         user_message = request.get("message", "")
         
         if not user_message:
             return {"title": "Новый чат"}
         
-        # Создаем короткий промпт для генерации названия
+        # Создаем улучшенный промпт для генерации названия
         messages = [
             {
                 "role": "system",
-                "content": "Ты помощник, который создает короткие названия для чатов. Создай краткое название (максимум 4-5 слов) на основе сообщения пользователя. Отвечай ТОЛЬКО названием, без кавычек и дополнительного текста."
+                "content": """Ты эксперт по созданию кратких, информативных названий для чатов.
+
+ПРАВИЛА:
+- Название должно быть 2-5 слов
+- Отражать суть вопроса/темы
+- Быть понятным и конкретным
+- БЕЗ кавычек, точек, восклицательных знаков
+- На том же языке, что и сообщение
+
+ПРИМЕРЫ:
+"Как приготовить пасту карбонара?" → "Рецепт пасты карбонара"
+"What is machine learning?" → "Machine Learning Basics"
+"Помоги с кодом на Python" → "Помощь с Python"
+"Расскажи про квантовую физику" → "Квантовая физика"
+
+Отвечай ТОЛЬКО названием, ничего больше."""
             },
             {
                 "role": "user",
-                "content": f"Создай короткое название для чата на основе этого сообщения: {user_message[:200]}"
+                "content": user_message[:300]
             }
         ]
         
-        async with httpx.AsyncClient() as client:
-            headers = {
-                "Content-Type": "application/json",
-                "HTTP-Referer": "http://localhost:3000",
-                "X-Title": "Flickers AI",
-            }
-            
-            if OPENROUTER_API_KEY:
-                headers["Authorization"] = f"Bearer {OPENROUTER_API_KEY}"
-            
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 API_BASE_URL,
                 json={
-                    "model": "meta-llama/llama-3.1-8b-instruct",
+                    "model": "meta-llama/Llama-3.1-8B-Instruct",
                     "messages": messages,
-                    "max_tokens": 50,
-                    "temperature": 0.7
+                    "max_tokens": 30,
+                    "temperature": 0.5
                 },
-                headers=headers,
-                timeout=30.0
+                headers={
+                    "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
+                    "Content-Type": "application/json"
+                }
             )
             
             if response.status_code == 200:
                 data = response.json()
                 title = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                # Убираем кавычки если есть
-                title = title.strip('"').strip("'")
-                return {"title": title[:50] if title else "Новый чат"}
+                # Очищаем название
+                title = title.strip('"').strip("'").strip('.')
+                # Ограничиваем длину
+                if len(title) > 50:
+                    title = title[:47] + "..."
+                return {"title": title if title else user_message[:40]}
             else:
-                return {"title": user_message[:50]}
+                # Fallback: используем первые слова сообщения
+                words = user_message.split()[:5]
+                return {"title": " ".join(words)}
                 
     except Exception as e:
         print(f"Error generating title: {e}")
-        return {"title": user_message[:50] if user_message else "Новый чат"}
+        # Fallback: используем первые слова сообщения
+        words = user_message.split()[:5] if user_message else ["Новый", "чат"]
+        return {"title": " ".join(words)}
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+class ImageGenerationRequest(BaseModel):
+    prompt: str
+    model: Optional[str] = "black-forest-labs/FLUX.1-schnell"
+
+@app.post("/api/generate-image")
+async def generate_image(request: ImageGenerationRequest, username: Optional[str] = Depends(get_current_user)):
+    """Генерирует изображение по текстовому описанию через Hugging Face"""
+    if not username:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+    
+    try:
+        print(f"🎨 Генерация изображения для пользователя: {username}")
+        print(f"📝 Промпт (оригинал): {request.prompt}")
+        
+        # Определяем язык и переводим на английский, если нужно
+        original_prompt = request.prompt
+        english_prompt = original_prompt
+        
+        # Простая проверка на кириллицу
+        has_cyrillic = bool(re.search('[а-яА-ЯёЁ]', original_prompt))
+        
+        if has_cyrillic:
+            print("🌍 Обнаружен русский текст, переводим на английский...")
+            try:
+                # Используем простой словарь для базового перевода
+                # Можно расширить этот словарь для лучшего качества
+                translation_dict = {
+                    'собака': 'dog', 'собаку': 'dog', 'собаки': 'dogs',
+                    'кошка': 'cat', 'кошку': 'cat', 'кошки': 'cats',
+                    'дом': 'house', 'дома': 'houses',
+                    'машина': 'car', 'машину': 'car', 'машины': 'cars',
+                    'человек': 'person', 'человека': 'person', 'люди': 'people',
+                    'дерево': 'tree', 'деревья': 'trees',
+                    'цветок': 'flower', 'цветы': 'flowers',
+                    'небо': 'sky', 'солнце': 'sun', 'луна': 'moon',
+                    'море': 'sea', 'океан': 'ocean', 'река': 'river',
+                    'гора': 'mountain', 'горы': 'mountains',
+                    'лес': 'forest', 'поле': 'field',
+                    'город': 'city', 'деревня': 'village',
+                    'красивый': 'beautiful', 'красивая': 'beautiful', 'красивое': 'beautiful',
+                    'большой': 'big', 'большая': 'big', 'большое': 'big',
+                    'маленький': 'small', 'маленькая': 'small', 'маленькое': 'small',
+                    'нарисуй': 'draw', 'нарисовать': 'draw',
+                    'создай': 'create', 'создать': 'create',
+                    'сделай': 'make', 'сделать': 'make',
+                    'покажи': 'show', 'показать': 'show',
+                }
+                
+                # Простой перевод по словам
+                words = original_prompt.lower().split()
+                translated_words = []
+                for word in words:
+                    # Убираем знаки препинания
+                    clean_word = word.strip('.,!?;:')
+                    translated = translation_dict.get(clean_word, clean_word)
+                    translated_words.append(translated)
+                
+                english_prompt = ' '.join(translated_words)
+                
+                # Если перевод отличается от оригинала, используем его
+                if english_prompt != original_prompt.lower():
+                    print(f"✅ Перевод: {english_prompt}")
+                else:
+                    # Пробуем использовать LLM для перевода
+                    try:
+                        async with httpx.AsyncClient(timeout=30.0) as trans_client:
+                            response = await trans_client.post(
+                                f"{API_BASE_URL}",
+                                headers={
+                                    "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
+                                    "Content-Type": "application/json"
+                                },
+                                json={
+                                    "model": "meta-llama/Llama-3.2-3B-Instruct",
+                                    "messages": [
+                                        {
+                                            "role": "system",
+                                            "content": "You are a translator. Translate the following Russian text to English. Reply ONLY with the English translation, nothing else."
+                                        },
+                                        {
+                                            "role": "user",
+                                            "content": original_prompt
+                                        }
+                                    ],
+                                    "max_tokens": 100,
+                                    "temperature": 0.3
+                                }
+                            )
+                            
+                            if response.status_code == 200:
+                                result = response.json()
+                                if 'choices' in result and len(result['choices']) > 0:
+                                    english_prompt = result['choices'][0]['message']['content'].strip()
+                                    print(f"✅ Перевод через LLM: {english_prompt}")
+                    except Exception as e:
+                        print(f"⚠️ Ошибка перевода через LLM: {e}")
+                        
+            except Exception as e:
+                print(f"⚠️ Ошибка перевода: {e}, используем оригинал")
+        
+        print(f"🤖 Модель: {request.model}")
+        print(f"📝 Промпт для генерации: {english_prompt}")
+        
+        # Используем huggingface_hub InferenceClient (работает с новым API автоматически)
+        from huggingface_hub import InferenceClient
+        import base64
+        from io import BytesIO
+        
+        # Список мощных бесплатных моделей для генерации изображений
+        models_to_try = [
+            "black-forest-labs/FLUX.1-schnell",  # FLUX - очень быстрая и качественная
+            "stabilityai/stable-diffusion-xl-base-1.0",  # SDXL - мощная
+            "runwayml/stable-diffusion-v1-5",  # SD 1.5 - надёжная
+            "prompthero/openjourney-v4",  # OpenJourney - стилизованная
+            "CompVis/stable-diffusion-v1-4",  # SD 1.4 - классика
+        ]
+        
+        # Если модель не в списке, добавляем её первой
+        if request.model not in models_to_try:
+            models_to_try.insert(0, request.model)
+        
+        client = InferenceClient(token=HUGGINGFACE_API_KEY)
+        last_error = None
+        
+        for model in models_to_try:
+            try:
+                print(f"🔄 Пробуем модель: {model}")
+                
+                # Генерируем изображение с переведённым промптом
+                image = client.text_to_image(
+                    prompt=english_prompt,
+                    model=model
+                )
+                
+                # Конвертируем PIL Image в base64
+                buffered = BytesIO()
+                image.save(buffered, format="PNG")
+                image_bytes = buffered.getvalue()
+                image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                
+                print(f"✅ Изображение сгенерировано с моделью {model}, размер: {len(image_bytes)} байт")
+                
+                return {
+                    "image": f"data:image/png;base64,{image_base64}",
+                    "prompt": original_prompt,  # Возвращаем оригинальный промпт
+                    "prompt_en": english_prompt,  # Добавляем переведённый промпт
+                    "model": model
+                }
+                
+            except Exception as e:
+                last_error = f"Модель {model}: {str(e)}"
+                print(f"⚠️ {last_error}")
+                
+                # Если это ошибка загрузки модели, ждём немного
+                if "loading" in str(e).lower() or "503" in str(e):
+                    print(f"⏳ Модель {model} загружается, ждём 15 секунд...")
+                    await asyncio.sleep(15)
+                    
+                    try:
+                        # Повторная попытка
+                        image = client.text_to_image(
+                            prompt=english_prompt,
+                            model=model
+                        )
+                        
+                        buffered = BytesIO()
+                        image.save(buffered, format="PNG")
+                        image_bytes = buffered.getvalue()
+                        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                        
+                        print(f"✅ Изображение сгенерировано с моделью {model}, размер: {len(image_bytes)} байт")
+                        
+                        return {
+                            "image": f"data:image/png;base64,{image_base64}",
+                            "prompt": original_prompt,
+                            "prompt_en": english_prompt,
+                            "model": model
+                        }
+                    except Exception as e2:
+                        last_error = f"Модель {model} (повтор): {str(e2)}"
+                        print(f"⚠️ {last_error}")
+                        continue
+                
+                continue
+        
+        # Если все модели не сработали
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Не удалось сгенерировать изображение. Последняя ошибка: {last_error}"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Ошибка генерации изображения: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
